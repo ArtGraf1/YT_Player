@@ -1,0 +1,64 @@
+using System;
+using System.IO;
+using System.Collections.Generic;
+
+public class CPHInline
+{
+    public bool Execute()
+    {
+        try
+        {
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string controlFile = Path.Combine(desktop, "yt_control.txt");
+            string queueFile = Path.Combine(desktop, "yt_queue.dat");
+            string playerFile = Path.Combine(desktop, "yt_player.html");
+            // Если файла контроля нет - создаем
+            if (!File.Exists(controlFile))
+            {
+                File.WriteAllText(controlFile, "stopped");
+                return false;
+            }
+
+            string status = File.ReadAllText(controlFile).Trim();
+            // Только для статуса "ended" или принудительной проверки
+            if (status != "ended")
+                return false;
+            // Чтение очереди
+            List<string> queue = File.Exists(queueFile) ? new List<string>(File.ReadAllLines(queueFile)) : new List<string>();
+            if (queue.Count == 0)
+            {
+                // Очередь пуста - останавливаем
+                File.WriteAllText(playerFile, "<body style='background:#000;'></body>");
+                File.WriteAllText(controlFile, "stopped");
+                CPH.SendMessage("🎵 Плейлист завершен!");
+                return true;
+            }
+
+            // Берем следующий трек
+            string nextId = queue[0];
+            queue.RemoveAt(0);
+            File.WriteAllLines(queueFile, queue);
+            // HTML с простым плеером (без сложного JS)
+            string html = $@"<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv='refresh' content='30'>
+</head>
+<body style='margin:0; background:#000;'>
+    <iframe width='100%' height='100%' 
+            src='https://www.youtube.com/embed/{nextId}?autoplay=1&modestbranding=1'
+            frameborder='0' allowfullscreen></iframe>
+</body>
+</html>";
+            File.WriteAllText(playerFile, html);
+            File.WriteAllText(controlFile, "playing");
+            CPH.SendMessage($"🎵 Сейчас играет: youtu.be/{nextId}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogDebug($"ERROR: {ex}");
+            return false;
+        }
+    }
+}
