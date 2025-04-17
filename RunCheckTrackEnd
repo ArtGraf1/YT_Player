@@ -1,0 +1,16 @@
+// Код для действия "RunCheckTrackEnd"
+using System;
+using System.IO;
+
+public class CPHInline
+{
+    public bool Execute()
+    {
+        string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        string controlFile = Path.Combine(desktop, "yt_control.txt");
+        // Принудительно запускаем проверку
+        File.WriteAllText(controlFile, "force_check");
+        CPH.RunAction("CheckTrackEnd"); // Запускаем основное действие
+        return true;
+    }
+}
