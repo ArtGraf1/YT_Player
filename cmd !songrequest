@@ -1,0 +1,154 @@
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Text;
+
+public class CPHInline
+{
+    // Пути к файлам (замените YourUsername на реальное имя пользователя)
+    private string playerFile = @"C:\Users\YourUsername\Desktop\yt_player.html";
+    private string queueFile = @"C:\Users\YourUsername\Desktop\yt_queue.dat";
+    private string controlFile = @"C:\Users\YourUsername\Desktop\yt_control.txt";
+    public bool Execute()
+    {
+        try
+        {
+            // Проверка аргументов
+            if (!args.ContainsKey("rawInput") || !args.ContainsKey("userName"))
+            {
+                CPH.SendMessage("⚠️ Используйте: !songrequest https://youtu.be/...");
+                return false;
+            }
+
+            string user = args["userName"].ToString();
+            string url = args["rawInput"].ToString().Replace("!songrequest", "").Trim();
+            // Проверка URL
+            if (!IsYoutubeUrl(url))
+            {
+                CPH.SendMessage($"@{user}, нужен YouTube-URL!");
+                return false;
+            }
+
+            string videoId = ExtractYoutubeId(url);
+            AddToQueue(videoId);
+            if (GetQueueCount() == 1)
+            {
+                UpdatePlayer();
+            }
+
+            CPH.SendMessage($"✅ @{user}, трек #{GetQueueCount()} в очереди!");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogDebug($"ERROR: {ex}");
+            CPH.SendMessage("⚠️ Ошибка при добавлении трека");
+            return false;
+        }
+    }
+
+    private void UpdatePlayer()
+    {
+        var queue = GetCurrentQueue();
+        if (queue.Count == 0)
+        {
+            File.WriteAllText(playerFile, "<body style='background:#000;'></body>");
+            return;
+        }
+
+        // Фиксированная строка с JavaScript (без ошибок синтаксиса)
+        string html = @"<!DOCTYPE html>
+<html>
+<head>
+    <style>body { margin:0; overflow:hidden; background:#000; }</style>
+    <script>
+    let player;
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            videoId: '" + queue[0] + @"',
+            events: {
+                'onStateChange': function(event) {
+                    if (event.data == YT.PlayerState.ENDED) {
+                        setTimeout(function() {
+                            const controlFile = '" + controlFile.Replace(@"\", @"\\") + @"';
+                            fetch('file:///' + controlFile + '?ended=1')
+                                .then(function() { window.location.reload(); })
+                                .catch(function(e) { console.log(e); });
+                        }, 3000);
+                    }
+                }
+            },
+            playerVars: {
+                autoplay: 1,
+                modestbranding: 1,
+                controls: 1,
+                rel: 0,
+                enablejsapi: 1
+            }
+        });
+    }
+    </script>
+</head>
+<body>
+    <div id='player'></div>
+    <script src='https://www.youtube.com/iframe_api'></script>
+</body>
+</html>";
+        File.WriteAllText(playerFile, html, Encoding.UTF8);
+        File.WriteAllText(controlFile, "playing");
+    }
+
+    public bool CheckTrackEnd()
+    {
+        try
+        {
+            if (File.Exists(controlFile))
+            {
+                string content = File.ReadAllText(controlFile);
+                if (content.Contains("ended"))
+                {
+                    var queue = GetCurrentQueue();
+                    if (queue.Count > 0)
+                    {
+                        queue.RemoveAt(0);
+                        File.WriteAllLines(queueFile, queue);
+                    }
+
+                    UpdatePlayer();
+                    File.WriteAllText(controlFile, "checked");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogDebug($"CheckTrackEnd ERROR: {ex}");
+            return false;
+        }
+    }
+
+    private bool IsYoutubeUrl(string url) => url.Contains("youtu.be") || url.Contains("youtube.com");
+    private string ExtractYoutubeId(string url)
+    {
+        if (url.Contains("youtu.be/"))
+        {
+            var parts = url.Split(new[] { "youtu.be/" }, StringSplitOptions.None);
+            return parts[1].Split('?')[0];
+        }
+
+        var vParts = url.Split(new[] { "v=" }, StringSplitOptions.None);
+        return vParts[1].Split('&')[0];
+    }
+
+    private void AddToQueue(string videoId)
+    {
+        var queue = GetCurrentQueue();
+        queue.Add(videoId);
+        File.WriteAllLines(queueFile, queue);
+    }
+
+    private List<string> GetCurrentQueue() => File.Exists(queueFile) ? new List<string>(File.ReadAllLines(queueFile)) : new List<string>();
+    private int GetQueueCount() => GetCurrentQueue().Count;
+}
